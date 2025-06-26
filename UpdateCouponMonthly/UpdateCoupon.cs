@@ -1,0 +1,207 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.IO;
+using System.Linq;
+using System.Net.Mail;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace UpdateCouponMonthly
+{
+    class UpdateCoupon
+    {
+
+        /// <summary>
+        /// 回寫UsedRule兌出起訖時間
+        /// </summary>
+        public static void UpdateExchangeTime()
+        {
+            CommonUtility commonUtility = new CommonUtility();
+            try
+            {
+                DB_Connection _db = new DB_Connection();
+                List<SqlParameter> _Parameter = new List<SqlParameter>();
+                DateTime _after = DateTime.Now.AddMonths(+1);
+                DateTime _sDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);//月初
+                DateTime _eDate = new DateTime(_after.Year, _after.Month, 1);//月底(隔月第一天)
+                string _SQL = @"
+CREATE TABLE #temp_change_log (
+    GId INT,
+    MallId VARCHAR(5),
+    OldExchangeStart DATETIME,
+    OldExchangeEnd DATETIME,
+    ExchangeStart DATETIME,
+    ExchangeEnd DATETIME,
+);
+                                --回寫每個月遞延與兌回報表的兌出起訖時間
+								MERGE INTO UsedRule AS UR
+                                USING (select GId,MallId,MIN(ExchangeStart) as FixExchangeStart,MAX(ExchangeEnd) as FixExchangeEnd
+			                                FROM ExchangeMall EM left join Exchange_Gifts EG on EM.ERId=EG.ERId 
+			                                where GId in (
+                                                --遞延
+												SELECT GId  FROM [Gifts].[dbo].[Coupon] C
+													Where C.UsedEnd >= @EDate And Status = 'U' And C.UsedDate < @EDate And Len(C.MemberId) < 10 And MemberId <> '' and Type='C'
+													group by GId
+												union
+												select GId from Coupon C Left join Gifts G on C.GId = G.Id
+													Where UsedEnd >= @EDate And G.Type = 'C' And Status != 'F'  And C.CreateOn < @EDate And SAPType <> 'B'
+													group by GId
+												union
+                                                --兌回
+												select GId from Coupon C Left join Gifts G on C.GId = G.Id
+													Where C.UsedDate between @SDate And @EDate And C.Status = 'U' And G.Type = 'C' And Len(C.MemberId) < 10 And C.MemberId <> ''
+													group by GId
+			                                )
+		                                group by GId,MallId) AS EM
+                                ON  UR.GId = EM.GId AND
+                                    UR.MallId = EM.MallId
+                                WHEN MATCHED AND 
+									(UR.ExchangeStart IS NULL OR
+									 UR.ExchangeEnd IS NULL) THEN
+	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN EM.FixExchangeStart ELSE UR.ExchangeStart END,
+												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN EM.FixExchangeEnd ELSE UR.ExchangeEnd END
+								OUTPUT 
+									deleted.GId, 
+									deleted.MallId, 
+									deleted.ExchangeStart, 
+									deleted.ExchangeEnd, 
+									inserted.ExchangeStart, 
+									inserted.ExchangeEnd
+								INTO #temp_change_log (GId, MallId, OldExchangeStart, OldExchangeEnd, ExchangeStart, ExchangeEnd);
+--變更紀錄
+select * from #temp_change_log order by GId,MallId
+
+DROP TABLE #temp_change_log";
+                _Parameter.Add(new SqlParameter("SDate", _sDate));
+                _Parameter.Add(new SqlParameter("EDate", _eDate));
+
+                //_db.SQLExecute(_SQL, _Parameter);
+                DataTable changeLog = _db.GetDataTable(_SQL, _Parameter);
+                commonUtility.Txt(@"/********************回寫UsedRule兌出起訖時間********************\");
+                commonUtility.Txt($"{string.Format("{0,6}", "GId")} {string.Format("{0,6}", "MallId")} " +
+                        $"{string.Format("{0,27}", "OldExchangeStart")} {string.Format("{0,27}", "OldExchangeEnd")} " +
+                        $"{string.Format("{0,27}", "ExchangeStart")} {string.Format("{0,27}", "ExchangeEnd")}");
+                foreach (var item in changeLog.Select())
+                {
+                    commonUtility.Txt($"{string.Format("{0,6}", item["GId"].ToString())} {string.Format("{0,6}", item["MallId"].ToString())} " +
+                        $"{string.Format("{0,25}", item["OldExchangeStart"].ToString())} " +
+                        $"{string.Format("{0,25}", item["OldExchangeEnd"].ToString())} " +
+                        $"{string.Format("{0,25}", item["ExchangeStart"].ToString())} {string.Format("{0,25}", item["ExchangeEnd"].ToString())}");
+                }
+            }
+            catch (Exception ex)
+            {
+                string Failedmessage = "回寫兌出起訖時間發生錯誤，錯誤訊息：" + ex;
+                commonUtility.Txt(Failedmessage);
+            }
+            finally
+            {
+                commonUtility.Txt(@"/****************************************************************\");
+            }
+        }
+        /// <summary>
+        /// 回寫無償券(SAPType B)兌出起訖時間
+        /// </summary>
+        public static void UpdateSAP_B_Time()
+        {
+            CommonUtility commonUtility = new CommonUtility();
+            try
+            {
+                DB_Connection _db = new DB_Connection();
+                List<SqlParameter> _Parameter = new List<SqlParameter>();
+                DateTime _after = DateTime.Now.AddMonths(+1);
+                DateTime _sDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);//月初
+                DateTime _eDate = new DateTime(_after.Year, _after.Month, 1);//月底(隔月第一天)
+
+                string _SQL = @"
+CREATE TABLE #temp_change_log (
+    GId INT,
+    MallId VARCHAR(5),
+    OldExchangeStart DATETIME,
+    OldExchangeEnd DATETIME,
+    ExchangeStart DATETIME,
+    ExchangeEnd DATETIME,
+);		                        
+                                --先塞ExchangeMall有的起迄時間
+								MERGE INTO UsedRule AS UR
+                                USING (select GId,MallId,MIN(ExchangeStart) as FixExchangeStart,MAX(ExchangeEnd) as FixExchangeEnd
+									   from ExchangeMall EM left join  Exchange_Gifts EG on EM.ERId = EG.ERId
+									   where GId in (
+												select GId from Coupon C Left join Gifts G on C.GId = G.Id where SAPType='B' and 
+													c.CreateOn >=@SDate and c.CreateOn <@EDate
+												group by GId
+										)
+										group by GId,MallId) AS EM
+                                ON  UR.GId = EM.GId AND
+                                    UR.MallId = EM.MallId
+                                WHEN MATCHED AND 
+									(UR.ExchangeStart IS NULL OR
+									 UR.ExchangeEnd IS NULL) THEN
+	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN EM.FixExchangeStart ELSE UR.ExchangeStart END,
+												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN EM.FixExchangeEnd ELSE UR.ExchangeEnd END
+								OUTPUT 
+									deleted.GId, 
+									deleted.MallId, 
+									deleted.ExchangeStart, 
+									deleted.ExchangeEnd, 
+									inserted.ExchangeStart, 
+									inserted.ExchangeEnd
+								INTO #temp_change_log (GId, MallId, OldExchangeStart, OldExchangeEnd, ExchangeStart, ExchangeEnd);
+
+                                --再塞沒有在ExchangeMall，用Coupon Createon當作起訖時間
+								MERGE INTO UsedRule AS UR
+                                USING (select GId,C.MallId,MIN(C.CreateOn) as FixExchangeStart,MAX(C.CreateOn) as FixExchangeEnd 
+										from Coupon C Left join Gifts G on C.GId = G.Id where SAPType='B' and 
+											c.CreateOn >=@SDate and c.CreateOn <@EDate and 
+											NOT EXISTS (select 1 from ExchangeMall EM left join  Exchange_Gifts EG on EM.ERId = EG.ERId where GId =c.GId)
+										group by GId,C.MallId) AS EM
+                                ON  UR.GId = EM.GId AND
+                                    UR.MallId = EM.MallId
+                                WHEN MATCHED AND 
+									(UR.ExchangeStart IS NULL OR
+									 UR.ExchangeEnd IS NULL) THEN
+	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN EM.FixExchangeStart ELSE UR.ExchangeStart END,
+												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN EM.FixExchangeEnd ELSE UR.ExchangeEnd END
+								OUTPUT 
+									deleted.GId, 
+									deleted.MallId, 
+									deleted.ExchangeStart, 
+									deleted.ExchangeEnd, 
+									inserted.ExchangeStart, 
+									inserted.ExchangeEnd
+								INTO #temp_change_log (GId, MallId, OldExchangeStart, OldExchangeEnd, ExchangeStart, ExchangeEnd);
+
+--變更紀錄
+select * from #temp_change_log order by GId,MallId
+
+DROP TABLE #temp_change_log";
+                _Parameter.Add(new SqlParameter("SDate", _sDate));
+                _Parameter.Add(new SqlParameter("EDate", _eDate));
+
+                DataTable changeLog = _db.GetDataTable(_SQL, _Parameter);
+                commonUtility.Txt(@"/*********************回寫無償券兌出起訖時間*********************\");
+                commonUtility.Txt($"{string.Format("{0,6}", "GId")} {string.Format("{0,6}", "MallId")} " +
+                        $"{string.Format("{0,27}", "OldExchangeStart")} {string.Format("{0,27}", "OldExchangeEnd")} " +
+                        $"{string.Format("{0,27}", "ExchangeStart")} {string.Format("{0,27}", "ExchangeEnd")}");
+                foreach (var item in changeLog.Select())
+                {
+                    commonUtility.Txt($"{string.Format("{0,6}", item["GId"].ToString())} {string.Format("{0,6}", item["MallId"].ToString())} " +
+                        $"{string.Format("{0,25}", item["OldExchangeStart"].ToString())} " +
+                        $"{string.Format("{0,25}", item["OldExchangeEnd"].ToString())} " +
+                        $"{string.Format("{0,25}", item["ExchangeStart"].ToString())} {string.Format("{0,25}", item["ExchangeEnd"].ToString())}");
+                }
+            }
+            catch (Exception ex)
+            {
+                string Failedmessage = "回寫無償券兌出起訖時間發生錯誤，錯誤訊息：" + ex;
+                commonUtility.Txt(Failedmessage);
+            }
+            finally
+            {
+                commonUtility.Txt(@"/****************************************************************\");
+            }
+        }
+    }
+}
