@@ -104,16 +104,16 @@ namespace UpdateCouponMonthly
                 {
                     mail.Attachments.Add(new Attachment(file));
                 }
-
+                DateTime _before = DateTime.Now.AddMonths(-1);
                 //主旨
-                mail.Subject = $"{DateTime.Now.Month}月抵用券報表";
+                mail.Subject = $"{_before.Month}月抵用券報表";
                 //是否採用HTML格式
                 mail.IsBodyHtml = true;
                 //信件內容
                 mail.Body = $@"<div>
                                     <p>附件為</p>
-                                    <p>{DateTime.Now.Year}年{DateTime.Now.Month}月抵用券兌回資料</p>
-                                    <p>{DateTime.Now.Year}年{DateTime.Now.Month}月抵用券流通在外的有效券資料(遞延)</p>
+                                    <p>{_before.Year}年{_before.Month}月抵用券兌回資料</p>
+                                    <p>{_before.Year}年{_before.Month}月抵用券流通在外的有效券資料(遞延)</p>
                                </div>";
                 //編碼
                 mail.BodyEncoding = Encoding.UTF8;
