@@ -40,18 +40,14 @@ CREATE TABLE #temp_change_log (
                                 USING (select GId,MallId,MIN(ExchangeStart) as FixExchangeStart,MAX(ExchangeEnd) as FixExchangeEnd
 			                                FROM ExchangeMall EM left join Exchange_Gifts EG on EM.ERId=EG.ERId 
 			                                where GId in (
-                                                --遞延
+                                                --遞延&兌回
 												SELECT GId  FROM [Gifts].[dbo].[Coupon] C
-													Where C.UsedEnd >= @EDate And Status = 'U' And C.UsedDate < @EDate And Len(C.MemberId) < 10 And MemberId <> '' and Type='C'
+													Where c.CreateOn >=@SDate and c.CreateOn <@EDate And Status = 'U' and Type='C' 
 													group by GId
 												union
+                                                --遞延
 												select GId from Coupon C Left join Gifts G on C.GId = G.Id
-													Where UsedEnd >= @EDate And G.Type = 'C' And Status != 'F'  And C.CreateOn < @EDate And SAPType <> 'B'
-													group by GId
-												union
-                                                --兌回
-												select GId from Coupon C Left join Gifts G on C.GId = G.Id
-													Where C.UsedDate between @SDate And @EDate And C.Status = 'U' And G.Type = 'C' And Len(C.MemberId) < 10 And C.MemberId <> ''
+													Where c.CreateOn >=@SDate and c.CreateOn <@EDate And G.Type = 'C' And Status != 'F'  And SAPType <> 'B'
 													group by GId
 			                                )
 		                                group by GId,MallId) AS EM
