@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Mail;
@@ -26,6 +28,13 @@ namespace UpdateCouponMonthly
                 DateTime _after = DateTime.Now.AddMonths(+1);
                 DateTime _sDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);//月初
                 DateTime _eDate = new DateTime(_after.Year, _after.Month, 1);//月底(隔月第一天)
+                if (ConfigurationManager.AppSettings["DeBUG"] == "Y")
+                {
+                    DateTime.TryParseExact(ConfigurationManager.AppSettings["startDate"], "yyyy/MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dateS);
+                    _sDate = dateS;
+                    DateTime.TryParseExact(ConfigurationManager.AppSettings["endDate"], "yyyy/MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dateE);
+                    _eDate = dateE;
+                }
                 string _SQL = @"
 CREATE TABLE #temp_change_log (
     GId INT,
