@@ -119,6 +119,13 @@ DROP TABLE #temp_change_log";
                 DateTime _after = DateTime.Now.AddMonths(+1);
                 DateTime _sDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);//月初
                 DateTime _eDate = new DateTime(_after.Year, _after.Month, 1);//月底(隔月第一天)
+                if (ConfigurationManager.AppSettings["DeBUG"] == "Y")
+                {
+                    DateTime.TryParseExact(ConfigurationManager.AppSettings["startDate"], "yyyy/MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dateS);
+                    _sDate = dateS;
+                    DateTime.TryParseExact(ConfigurationManager.AppSettings["endDate"], "yyyy/MM/dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dateE);
+                    _eDate = dateE;
+                }
 
                 string _SQL = @"
 CREATE TABLE #temp_change_log (
@@ -129,46 +136,19 @@ CREATE TABLE #temp_change_log (
     ExchangeStart DATETIME,
     ExchangeEnd DATETIME,
 );		                        
-                                --先塞ExchangeMall有的起迄時間
+                                --直接用Coupon UsedStart UsedEnd 當作起訖時間
 								MERGE INTO UsedRule AS UR
-                                USING (select GId,MallId,MIN(ExchangeStart) as FixExchangeStart,MAX(ExchangeEnd) as FixExchangeEnd
-									   from ExchangeMall EM left join  Exchange_Gifts EG on EM.ERId = EG.ERId
-									   where GId in (
-												select GId from Coupon C Left join Gifts G on C.GId = G.Id where SAPType='B' and 
-													c.CreateOn >=@SDate and c.CreateOn <@EDate
-												group by GId
-										)
-										group by GId,MallId) AS EM
-                                ON  UR.GId = EM.GId AND
-                                    UR.MallId = EM.MallId
-                                WHEN MATCHED AND 
-									(UR.ExchangeStart IS NULL OR
-									 UR.ExchangeEnd IS NULL) THEN
-	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN EM.FixExchangeStart ELSE UR.ExchangeStart END,
-												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN EM.FixExchangeEnd ELSE UR.ExchangeEnd END
-								OUTPUT 
-									deleted.GId, 
-									deleted.MallId, 
-									deleted.ExchangeStart, 
-									deleted.ExchangeEnd, 
-									inserted.ExchangeStart, 
-									inserted.ExchangeEnd
-								INTO #temp_change_log (GId, MallId, OldExchangeStart, OldExchangeEnd, ExchangeStart, ExchangeEnd);
-
-                                --再塞沒有在ExchangeMall，用Coupon Createon當作起訖時間
-								MERGE INTO UsedRule AS UR
-                                USING (select GId,C.MallId,MIN(C.CreateOn) as FixExchangeStart,MAX(C.CreateOn) as FixExchangeEnd 
+                                USING (select GId,C.MallId,MIN(C.UsedStart) as FixExchangeStart,MAX(C.UsedEnd) as FixExchangeEnd 
 										from Coupon C Left join Gifts G on C.GId = G.Id where SAPType='B' and 
-											c.CreateOn >=@SDate and c.CreateOn <@EDate and 
-											NOT EXISTS (select 1 from ExchangeMall EM left join  Exchange_Gifts EG on EM.ERId = EG.ERId where GId =c.GId)
-										group by GId,C.MallId) AS EM
-                                ON  UR.GId = EM.GId AND
-                                    UR.MallId = EM.MallId
+											c.CreateOn >=@SDate and c.CreateOn <@EDate 
+										group by GId,C.MallId) AS C
+                                ON  UR.GId = C.GId AND
+                                    UR.MallId = C.MallId
                                 WHEN MATCHED AND 
 									(UR.ExchangeStart IS NULL OR
 									 UR.ExchangeEnd IS NULL) THEN
-	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN EM.FixExchangeStart ELSE UR.ExchangeStart END,
-												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN EM.FixExchangeEnd ELSE UR.ExchangeEnd END
+	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN C.FixExchangeStart ELSE UR.ExchangeStart END,
+												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN C.FixExchangeEnd ELSE UR.ExchangeEnd END
 								OUTPUT 
 									deleted.GId, 
 									deleted.MallId, 
