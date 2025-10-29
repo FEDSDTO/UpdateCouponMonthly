@@ -58,15 +58,17 @@ CREATE TABLE #temp_change_log (
 												select GId from Coupon C Left join Gifts G on C.GId = G.Id
 													Where c.CreateOn >=@SDate and c.CreateOn <@EDate And G.Type = 'C' And Status != 'F'  And SAPType <> 'B'
 													group by GId
-			                                )
+			                                ) and EM.IsUse = 1
 		                                group by GId,MallId) AS EM
                                 ON  UR.GId = EM.GId AND
                                     UR.MallId = EM.MallId
-                                WHEN MATCHED AND 
-									(UR.ExchangeStart IS NULL OR
-									 UR.ExchangeEnd IS NULL) THEN
-	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN EM.FixExchangeStart ELSE UR.ExchangeStart END,
-												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN EM.FixExchangeEnd ELSE UR.ExchangeEnd END
+                                WHEN MATCHED AND (
+										--判斷原本起訖時間是否為空值/不同值
+										(UR.ExchangeStart IS NULL OR UR.ExchangeStart <> EM.FixExchangeStart) OR
+										(UR.ExchangeEnd IS NULL OR UR.ExchangeEnd <> EM.FixExchangeEnd)
+									) THEN
+									UPDATE SET UR.ExchangeStart = CASE WHEN EM.FixExchangeStart IS NOT NULL THEN EM.FixExchangeStart ELSE UR.ExchangeStart END,
+											   UR.ExchangeEnd = CASE WHEN EM.FixExchangeEnd IS NOT NULL THEN EM.FixExchangeEnd ELSE UR.ExchangeEnd END
 								OUTPUT 
 									deleted.GId, 
 									deleted.MallId, 
@@ -144,11 +146,13 @@ CREATE TABLE #temp_change_log (
 										group by GId,C.MallId) AS C
                                 ON  UR.GId = C.GId AND
                                     UR.MallId = C.MallId
-                                WHEN MATCHED AND 
-									(UR.ExchangeStart IS NULL OR
-									 UR.ExchangeEnd IS NULL) THEN
-	                                 UPDATE SET UR.ExchangeStart = CASE WHEN UR.ExchangeStart IS NULL THEN C.FixExchangeStart ELSE UR.ExchangeStart END,
-												UR.ExchangeEnd = CASE WHEN UR.ExchangeEnd IS NULL THEN C.FixExchangeEnd ELSE UR.ExchangeEnd END
+                                WHEN MATCHED AND (
+										--判斷原本起訖時間是否為空值/不同值
+										(UR.ExchangeStart IS NULL OR UR.ExchangeStart <> C.FixExchangeStart) OR
+										(UR.ExchangeEnd IS NULL OR UR.ExchangeEnd <> C.FixExchangeEnd)
+									 ) THEN
+	                                 UPDATE SET UR.ExchangeStart = CASE WHEN C.FixExchangeStart IS NOT NULL THEN C.FixExchangeStart ELSE UR.ExchangeStart END,
+												UR.ExchangeEnd = CASE WHEN C.FixExchangeEnd IS NOT NULL THEN C.FixExchangeEnd ELSE UR.ExchangeEnd END
 								OUTPUT 
 									deleted.GId, 
 									deleted.MallId, 
