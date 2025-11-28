@@ -97,7 +97,7 @@ namespace UpdateCouponMonthly
 
                 if (files.Length == 0)
                 {
-                    throw new Exception ("未找到檔案");
+                    throw new Exception("未找到檔案");
                 }
                 // 新增附件
                 foreach (string file in files)
@@ -177,7 +177,8 @@ namespace UpdateCouponMonthly
                     foreach (string file in files)
                     {
                         FileInfo fileInfo = new FileInfo(file);
-                        if (DateTime.Now.ToString("yyyyMMdd") == fileInfo.CreationTime.ToString("yyyyMMdd")) //判斷檔案建立日期是否為今天
+                        if (DateTime.Now.ToString("yyyyMMdd") == fileInfo.CreationTime.ToString("yyyyMMdd") ||
+                            (extension == "*兌出-兌回.xlsx" && DateTime.Now.ToString("yyyyMMdd") == fileInfo.LastWriteTime.ToString("yyyyMMdd"))) //xlsx多判斷檔案修改日期是否為今天
                         {
                             string destinationFilePath = Path.Combine(destinationFolder, Path.GetFileName(file)); // 目標檔案完整路徑
                             string fileName = Path.GetFileNameWithoutExtension(file); // 檔案名稱（不含副檔名）
