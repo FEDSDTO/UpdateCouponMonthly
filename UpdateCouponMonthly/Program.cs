@@ -15,7 +15,7 @@ namespace UpdateCouponMonthly
             {
                 //回寫兌出起訖時間
                 UpdateCoupon.UpdateExchangeTime();
-                UpdateCoupon.UpdateSAP_B_Time();
+                //UpdateCoupon.UpdateSAP_B_Time();
             }
             else
             {
@@ -23,7 +23,7 @@ namespace UpdateCouponMonthly
                 {
                     //回寫兌出起訖時間
                     UpdateCoupon.UpdateExchangeTime();
-                    UpdateCoupon.UpdateSAP_B_Time();
+                    //UpdateCoupon.UpdateSAP_B_Time();
                 }
                 if (DateTime.Now.Day == 1) //當月第一天
                 {
