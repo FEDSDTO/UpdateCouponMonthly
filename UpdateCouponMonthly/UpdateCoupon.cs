@@ -58,7 +58,7 @@ CREATE TABLE #temp_change_log (
 												select GId from Coupon C Left join Gifts G on C.GId = G.Id
 													Where c.CreateOn >=@SDate and c.CreateOn <@EDate And G.Type = 'C' And Status != 'F'  And SAPType <> 'B'
 													group by GId
-			                                ) and EM.IsUse = 1
+			                                ) and EM.IsUse = 1 and EG.IsUse=1
 		                                group by GId,MallId) AS EM
                                 ON  UR.GId = EM.GId AND
                                     UR.MallId = EM.MallId
